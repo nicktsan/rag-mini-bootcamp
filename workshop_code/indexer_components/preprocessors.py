@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup, SoupStrainer
+from workshop_code.indexer_components.shared_indexer_component_methods import soup_get_text
 
 GITHUB_BLOG_POST = "https://lilianweng.github.io/posts/2023-06-23-agent/"
 ARXIV_RAG_SURVEY_PAPER = "https://arxiv.org/html/2312.10997v5"
@@ -31,9 +32,7 @@ class GithubBlogpostPreprocessor(Preprocessor):
         Returns:
             str: Cleaned text from specified parts of the HTML content.
         """
-        only_post_text = SoupStrainer(class_=["post-title"]) # TODO: Add the classes to parse here
-        soup = BeautifulSoup(html_content, "html.parser", parse_only=only_post_text)
-        cleaned_text = soup.get_text()
+        cleaned_text = soup_get_text(html_content, ["post-title", "post-meta", "post-content"], "html.parser")
         return cleaned_text
 
 class ArxivHtmlPaperPreprocessor(Preprocessor):
@@ -61,13 +60,33 @@ class ArxivHtmlPaperPreprocessor(Preprocessor):
         return cleaned_text
 
     def _extract_title(self, html_content: str) -> str:
-        return "ArxivHtmlPaperPreprocessor._extract_title() not implemented"
+        title = soup_get_text(html_content, ["ltx_title ltx_title_document"], "html.parser")
+        # return "ArxivHtmlPaperPreprocessor._extract_title() not implemented"
+        return title
     
     def _extract_authors_and_affiliations(self, html_content: str) -> str:
-        return "ArxivHtmlPaperPreprocessor._extract_authors_and_affiliations() not implemented"
-    
+        strainer = SoupStrainer('div', class_="ltx_authors")
+        soup = BeautifulSoup(html_content, 'html.parser', parse_only=strainer)
+
+        result = []
+        for author in soup.find_all('span', class_='ltx_creator ltx_role_author'):
+            name = author.find('span', class_='ltx_personname').get_text(strip=True)
+            affil = ' '.join(span.get_text(strip=True) for span in author.find_all('span', class_='ltx_contact ltx_role_affiliation'))
+            result.append(f"{name}: {affil}\n\n")
+        final_result = "\n".join(result)
+        return final_result
+
     def _extract_abstract(self, html_content: str) -> str:
-        return "ArxivHtmlPaperPreprocessor._extract_abstracts() not implemented"
+        strainer_id = SoupStrainer(class_="ltx_abstract")
+        abstract = BeautifulSoup(html_content, 'html.parser', parse_only=strainer_id)
+        child_to_exclude = abstract.find(class_='ltx_note ltx_role_footnote')
+        # Remove the child element from the parent
+        if child_to_exclude:
+            child_to_exclude.decompose()  # Or you can use .extract() to remove it
+        desired_info = abstract.get_text()
+        return desired_info
     
     def _extract_section_with_subheadings(self, html_content: str, section_id: str) -> str:
-        return "ArxivHtmlPaperPreprocessor._extract_section_with_subheadings() not implemented"
+        strainer_id = SoupStrainer(class_=['ltx_para'])
+        abstract = BeautifulSoup(html_content, 'html.parser', parse_only=strainer_id).get_text()
+        return abstract
